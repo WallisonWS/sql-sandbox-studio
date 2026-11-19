@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SQL Sandbox Studio — Run Real SQL Queries on CSV/JSON in Your Browser</title>
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Inter',system-ui,sans-serif; background:#060a14; color:#f8fafc; min-height:100vh; padding:24px 18px; background-image:radial-gradient(circle at 12% 0%,rgba(99,102,241,0.16),transparent 40%),radial-gradient(circle at 88% 8%,rgba(14,165,233,0.14),transparent 40%); }
+    .wrap { max-width:1180px; margin:0 auto; }
+    .hero { background:linear-gradient(135deg,rgba(99,102,241,0.18),rgba(14,165,233,0.16)); border:1px solid rgba(99,102,241,0.45); border-radius:16px; padding:22px 26px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; }
+    .hero h1 { font-size:1.6rem; font-weight:800; margin-bottom:4px; }
+    .hero p { color:#94a3b8; font-size:0.9rem; max-width:700px; }
+    .btn { background:linear-gradient(135deg,#6366f1,#0ea5e9); color:#fff; border:none; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer; font-size:0.81rem; text-decoration:none; }
+    .btn-ghost { background:#0f172a; border:1px solid #26334d; color:#e2e8f0; }
+    .btn-ok { background:linear-gradient(135deg,#10b981,#0ea5e9); color:#060a14; font-weight:800; }
+    .grid { display:grid; grid-template-columns:1fr 1.2fr; gap:16px; }
+    @media(max-width:900px){ .grid{ grid-template-columns:1fr; } }
+    .card { background:#0f1626; border:1px solid #23304d; border-radius:14px; padding:18px; margin-bottom:16px; }
+    .card h2 { font-size:0.96rem; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+    textarea { width:100%; background:#080d18; border:1px solid #23304d; color:#e2e8f0; border-radius:8px; padding:11px; font-family:Consolas,monospace; font-size:0.82rem; line-height:1.5; }
+    table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+    th, td { padding:9px 11px; border-bottom:1px solid #1e293b; text-align:left; font-family:Consolas,monospace; }
+    th { color:#94a3b8; font-size:0.72rem; text-transform:uppercase; background:rgba(0,0,0,0.2); }
+    .presets { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .status { font-size:0.8rem; color:#34d399; margin-bottom:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1 data-i="title">🗄️ SQL Sandbox Studio — Run Real SQL Queries on CSV &amp; JSON Locally</h1>
+        <p data-i="sub">Drop any CSV or JSON file and query it live with real SQL (<code>SELECT</code>, <code>WHERE</code>, <code>GROUP BY</code>, <code>SUM/AVG/COUNT/MIN/MAX</code>, <code>ORDER BY</code>, <code>LIMIT</code>) — 100% browser-side, zero database setup.</p>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="langBtn">🌐 EN / PT-BR / ES</button>
+        <a href="https://github.com/WallisonWS/sql-sandbox-studio" target="_blank" class="btn">⭐ Star on GitHub</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>
+          <span data-i="h_data">📥 Table `data` (Upload CSV/JSON or Edit)</span>
+          <input type="file" id="csvUpload" accept=".csv,.json" style="font-size:0.75rem; width:auto;" />
+        </h2>
+        <textarea id="csvIn" rows="12"></textarea>
+      </div>
+
+      <div class="card">
+        <h2>
+          <span data-i="h_query">⚡ SQL Query Editor (Table: `data`)</span>
+          <button class="btn btn-ok" id="runSqlBtn">▶ Run SQL</button>
+        </h2>
+        <div class="presets">
+          <button class="btn btn-ghost" onclick="setQ('SELECT region, COUNT(*) AS deals, SUM(revenue) AS total_rev, AVG(revenue) AS avg_rev FROM data GROUP BY region ORDER BY total_rev DESC')">Group By Region</button>
+          <button class="btn btn-ghost" onclick="setQ('SELECT rep, region, product, revenue FROM data WHERE revenue >= 60000 ORDER BY revenue DESC LIMIT 5')">Top Deals (&gt;=60k)</button>
+          <button class="btn btn-ghost" onclick="setQ('SELECT product, SUM(revenue) AS total FROM data WHERE status = \'closed\' GROUP BY product ORDER BY total DESC')">Closed by Product</button>
+        </div>
+        <textarea id="sqlIn" rows="4"></textarea>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin:12px 0 6px; flex-wrap:wrap; gap:8px;">
+          <div class="status" id="sqlStatus">Ready.</div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-ghost" id="expCsvBtn">⬇️ CSV</button>
+            <button class="btn btn-ghost" id="expJsonBtn">⬇️ JSON</button>
+          </div>
+        </div>
+        <div style="overflow:auto; max-height:290px;">
+          <table id="resTable"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SAMPLE_CSV = `id,region,rep,product,revenue,status
+1,Brazil,Ana,CloudSec,68000,closed
+2,USA,Mark,Enterprise,125000,closed
+3,Brazil,Carlos,DevOps,42000,closed
+4,Europe,Elena,CloudSec,89000,closed
+5,USA,Sarah,Enterprise,142000,closed
+6,LATAM,Diego,DevOps,31000,open
+7,Brazil,Ana,Enterprise,95000,closed
+8,Europe,Elena,DevOps,54000,open`;
+
+    let lastResult = [];
+
+    function parseInput(raw) {
+      const t = raw.trim();
+      if (!t) return [];
+      if (t.startsWith('[')) return JSON.parse(t);
+      const lines = t.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      const hdr = lines[0].split(',').map(s => s.trim());
+      return lines.slice(1).map(l => {
+        const vals = l.split(',').map(s => s.trim());
+        const obj = {};
+        hdr.forEach((h, i) => { const v = vals[i] ?? ''; obj[h] = v !== '' && !isNaN(Number(v)) ? Number(v) : v; });
+        return obj;
+      });
+    }
+
+    function evalWhere(row, whereClause) {
+      if (!whereClause) return true;
+      const conds = whereClause.split(/\s+AND\s+/i);
+      return conds.every(cond => {
+        const m = cond.trim().match(/^(\w+)\s*(=|!=|<>|>=|<=|>|<|LIKE)\s*(['"]?)(.+?)\3$/i);
+        if (!m) return true;
+        const [, col, op, , rawVal] = m;
+        const left = row[col];
+        const right = !isNaN(Number(rawVal)) && typeof left === 'number' ? Number(rawVal) : rawVal;
+        if (op === '=') return String(left).toLowerCase() === String(right).toLowerCase();
+        if (op === '!=' || op === '<>') return String(left).toLowerCase() !== String(right).toLowerCase();
+        if (op === '>') return Number(left) > Number(right);
+        if (op === '<') return Number(left) < Number(right);
+        if (op === '>=') return Number(left) >= Number(right);
+        if (op === '<=') return Number(left) <= Number(right);
+        if (op.toUpperCase() === 'LIKE') {
+          const rx = new RegExp('^' + String(right).replace(/%/g, '.*') + '$', 'i');
+          return rx.test(String(left));
+        }
+        return true;
+      });
+    }
+
+    function executeSql(rows, sql) {
+      const clean = sql.replace(/;\s*$/, '').replace(/\s+/g, ' ').trim();
+      const m = clean.match(/^SELECT\s+(.+?)\s+FROM\s+\w+(?:\s+WHERE\s+(.+?))?(?:\s+GROUP\s+BY\s+([\w,\s]+?))?(?:\s+ORDER\s+BY\s+([\w]+)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?$/i);
+      if (!m) throw new Error('Syntax supported: SELECT ... FROM data [WHERE ...] [GROUP BY ...] [ORDER BY col ASC|DESC] [LIMIT n]');
+      const [, selectPart, wherePart, groupPart, orderCol, orderDir, limitStr] = m;
+      const filtered = rows.filter(r => evalWhere(r, wherePart));
+      const selectCols = selectPart.split(',').map(s => s.trim());
+
+      let outRows = [];
+      const hasAgg = selectCols.some(c => /\b(SUM|AVG|COUNT|MIN|MAX)\s*\(/i.test(c));
+
+      if (groupPart || hasAgg) {
+        const gCol = groupPart ? groupPart.trim().split(',')[0].trim() : null;
+        const buckets = new Map();
+        for (const r of filtered) {
+          const k = gCol ? String(r[gCol]) : '__ALL__';
+          if (!buckets.has(k)) buckets.set(k, []);
+          buckets.get(k).push(r);
+        }
+        for (const [k, grp] of buckets.entries()) {
+          const rowOut = {};
+          for (const expr of selectCols) {
+            const asM = expr.match(/^(.+?)\s+AS\s+(\w+)$/i);
+            const rawExpr = asM ? asM[1].trim() : expr;
+            const alias = asM ? asM[2].trim() : rawExpr;
+            const aggM = rawExpr.match(/^(SUM|AVG|COUNT|MIN|MAX)\s*\(\s*(\*|\w+)\s*\)$/i);
+            if (aggM) {
+              const fn = aggM[1].toUpperCase(), col = aggM[2];
+              const nums = grp.map(x => Number(x[col])).filter(n => !isNaN(n));
+              if (fn === 'COUNT') rowOut[alias] = grp.length;
+              else if (fn === 'SUM') rowOut[alias] = Number(nums.reduce((a, b) => a + b, 0).toFixed(2));
+              else if (fn === 'AVG') rowOut[alias] = nums.length ? Number((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2)) : 0;
+              else if (fn === 'MIN') rowOut[alias] = nums.length ? Math.min(...nums) : null;
+              else if (fn === 'MAX') rowOut[alias] = nums.length ? Math.max(...nums) : null;
+            } else {
+              rowOut[alias] = grp[0][rawExpr];
+            }
+          }
+          outRows.push(rowOut);
+        }
+      } else {
+        outRows = filtered.map(r => {
+          if (selectPart.trim() === '*') return { ...r };
+          const o = {};
+          for (const expr of selectCols) {
+            const asM = expr.match(/^(\w+)\s+AS\s+(\w+)$/i);
+            o[asM ? asM[2] : expr] = r[asM ? asM[1] : expr];
+          }
+          return o;
+        });
+      }
+
+      if (orderCol) {
+        const dir = (orderDir || 'ASC').toUpperCase() === 'DESC' ? -1 : 1;
+        outRows.sort((a, b) => (a[orderCol] > b[orderCol] ? 1 : a[orderCol] < b[orderCol] ? -1 : 0) * dir);
+      }
+      if (limitStr) outRows = outRows.slice(0, parseInt(limitStr, 10));
+      return outRows;
+    }
+
+    function run() {
+      const st = document.getElementById('sqlStatus');
+      const thead = document.querySelector('#resTable thead'), tbody = document.querySelector('#resTable tbody');
+      try {
+        const t0 = performance.now();
+        const rows = parseInput(document.getElementById('csvIn').value);
+        lastResult = executeSql(rows, document.getElementById('sqlIn').value);
+        const dt = (performance.now() - t0).toFixed(2);
+        st.style.color = '#34d399';
+        st.textContent = `✅ ${lastResult.length} row(s) returned in ${dt}ms (scanned ${rows.length} rows locally)`;
+        if (!lastResult.length) { thead.innerHTML = ''; tbody.innerHTML = '<tr><td>Empty result set.</td></tr>'; return; }
+        const cols = Object.keys(lastResult[0]);
+        thead.innerHTML = `<tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>`;
+        tbody.innerHTML = lastResult.map(r => `<tr>${cols.map(c => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('');
+      } catch (e) {
+        st.style.color = '#f87171'; st.textContent = `❌ ${e.message}`;
+      }
+    }
+
+    window.setQ = (q) => { document.getElementById('sqlIn').value = q; run(); };
+    document.getElementById('runSqlBtn').addEventListener('click', run);
+    document.getElementById('csvUpload').addEventListener('change', e => { const f = e.target.files[0]; if (f) f.text().then(t => { document.getElementById('csvIn').value = t; run(); }); });
+    document.getElementById('expJsonBtn').addEventListener('click', () => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' })); a.download = 'query_result.json'; a.click();
+    });
+    document.getElementById('expCsvBtn').addEventListener('click', () => {
+      if (!lastResult.length) return;
+      const cols = Object.keys(lastResult[0]);
+      const csv = [cols.join(','), ...lastResult.map(r => cols.map(c => r[c] ?? '').join(','))].join('\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'query_result.csv'; a.click();
+    });
+
+    // Trilingual Switcher (EN / PT-BR / ES)
+    const LANGS = {
+      en: { btn:'🇺🇸 EN → 🇧🇷 PT-BR', title:'🗄️ SQL Sandbox Studio — Run Real SQL Queries on CSV & JSON Locally', sub:'Drop any CSV or JSON file and query it live with real SQL (SELECT, WHERE, GROUP BY, SUM/AVG/COUNT/MIN/MAX, ORDER BY, LIMIT) — 100% browser-side.', h_data:'📥 Table `data` (Upload CSV/JSON or Edit)', h_query:'⚡ SQL Query Editor (Table: `data`)' },
+      pt: { btn:'🇧🇷 PT-BR → 🇪🇸 ES', title:'🗄️ SQL Sandbox Studio — Execute Consultas SQL Reais em CSV/JSON no Navegador', sub:'Arraste qualquer arquivo CSV ou JSON e execute SQL de verdade (SELECT, WHERE, GROUP BY, SUM/AVG/COUNT, ORDER BY, LIMIT) localmente sem banco de dados.', h_data:'📥 Tabela `data` (Carregar CSV/JSON ou Editar)', h_query:'⚡ Editor de Query SQL (Tabela: `data`)' },
+      es: { btn:'🇪🇸 ES → 🇺🇸 EN', title:'🗄️ SQL Sandbox Studio — Ejecuta SQL Real sobre CSV y JSON en el Navegador', sub:'Carga cualquier archivo CSV o JSON y consulta en tiempo real con SQL (SELECT, WHERE, GROUP BY, SUM/AVG/COUNT, ORDER BY, LIMIT) 100% local.', h_data:'📥 Tabla `data` (Cargar CSV/JSON o Editar)', h_query:'⚡ Editor de Consultas SQL (Tabla: `data`)' }
+    };
+    const order = ['en','pt','es'];
+    let cur = localStorage.getItem('sql_lang') || ((navigator.language||'').startsWith('pt') ? 'pt' : (navigator.language||'').startsWith('es') ? 'es' : 'en');
+    function applyL() {
+      localStorage.setItem('sql_lang', cur);
+      const d = LANGS[cur]; document.getElementById('langBtn').textContent = d.btn;
+      document.querySelectorAll('[data-i]').forEach(el => { if (d[el.dataset.i]) el.textContent = d[el.dataset.i]; });
+    }
+    document.getElementById('langBtn').addEventListener('click', () => { cur = order[(order.indexOf(cur)+1)%3]; applyL(); });
+    applyL();
+
+    document.getElementById('csvIn').value = SAMPLE_CSV;
+    setQ('SELECT region, COUNT(*) AS deals, SUM(revenue) AS total_rev, AVG(revenue) AS avg_rev FROM data GROUP BY region ORDER BY total_rev DESC');
+  </script>
+</body>
+</html>
